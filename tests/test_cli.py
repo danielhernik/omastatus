@@ -183,6 +183,28 @@ class OmastatusCliTest(unittest.TestCase):
         self.assertEqual(status["services"][0]["status"], "up")
         self.assertEqual(status["services"][0]["statusCode"], 204)
 
+    def test_recovery_threshold_holds_down_through_a_restart_loop(self):
+        queue = self.root / "systemctl-states"
+        queue.write_text("failed\nactive\nfailed\nactive\nactive\n", encoding="utf-8")
+        self.fake_command(
+            "systemctl",
+            "import pathlib, sys\n"
+            f"queue = pathlib.Path({str(queue)!r})\n"
+            "states = queue.read_text().split()\n"
+            "state = states.pop(0) if states else 'failed'\n"
+            "queue.write_text('\\n'.join(states))\n"
+            "print(state)\n"
+            "sys.exit(0 if state == 'active' else 3)",
+        )
+        self.json_cli("add", "--name", "Tunnel", "--target", "tunnel.service", "--type", "systemd")
+        config_path = Path(self.env["OMASTATUS_CONFIG_DIR"]) / "config.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["settings"]["recoveryThreshold"] = 2
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+        observed = [self.json_cli("check")["services"][0]["status"] for _ in range(5)]
+        # The single "active" blips are a restart loop retrying, not a recovery.
+        self.assertEqual(observed, ["down", "down", "down", "down", "up"])
+
     def test_disabled_service_does_not_make_aggregate_red(self):
         service = self.json_cli("add", "--name", "Offline", "--target", "127.0.0.1:1")
         self.json_cli("toggle", service["id"])

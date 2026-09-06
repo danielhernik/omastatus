@@ -16,7 +16,7 @@ Click the dot to open a native panel with a status dot beside every service.
 - Categories with an All/Uncategorised filter.
 - Three persistent panel layouts: grouped detail, compact list, and two-column grid.
 - Configurable 15-second to 5-minute polling from the panel; the CLI accepts 5 seconds to 1 hour.
-- Desktop notifications on a transition to down and on recovery.
+- Desktop notifications on a transition to down and on recovery, with an optional `recoveryThreshold` so a flapping service is announced once per outage.
 - Private, atomic configuration and state files; no cloud account or monitoring server.
 
 ## Supported targets
@@ -65,6 +65,32 @@ OMASTATUS="$HOME/.config/omarchy/plugins/io.github.dupontbertrand.omastatus/bin/
 "$OMASTATUS" add --name PostgreSQL --target "postgres://localhost"
 "$OMASTATUS" add --name Omasync --target "systemd://user/omasync.service"
 ```
+
+## Flapping services
+
+A service in a restart loop is briefly healthy on every retry — a systemd unit
+reports `active` for as long as its process spends failing to connect — so a
+poll that lands inside one of those windows sees a recovery that is not real.
+The result is a stream of paired *is down* / *recovered* notifications for what
+is a single outage.
+
+`recoveryThreshold` holds a service that is already down at down until it has
+answered that many checks in a row. It defaults to `1`, which is the behaviour
+above; raise it in `~/.config/omastatus/config.json`:
+
+```json
+{
+  "settings": {
+    "intervalSeconds": 30,
+    "recoveryThreshold": 3
+  }
+}
+```
+
+At a 30-second interval that asks for 90 seconds of sustained health before a
+recovery counts. The trade is that a genuine recovery is announced that much
+later, and the dot stays red until then. `failureThreshold` is the mirror of
+this on the way down.
 
 ## Install
 

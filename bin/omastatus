@@ -73,6 +73,7 @@ def default_config() -> dict[str, Any]:
             "intervalSeconds": 30,
             "timeoutSeconds": 4,
             "failureThreshold": 1,
+            "recoveryThreshold": 1,
             "notifications": True,
             "viewMode": "grouped",
         },
@@ -401,6 +402,7 @@ def normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
         "intervalSeconds": bounded_int(settings_raw.get("intervalSeconds"), 30, 5, 3600),
         "timeoutSeconds": bounded_int(settings_raw.get("timeoutSeconds"), 4, 1, 30),
         "failureThreshold": bounded_int(settings_raw.get("failureThreshold"), 1, 1, 10),
+        "recoveryThreshold": bounded_int(settings_raw.get("recoveryThreshold"), 1, 1, 10),
         "notifications": settings_raw.get("notifications", True) is not False,
         "viewMode": view_mode,
     }
@@ -807,6 +809,7 @@ def run_checks(config: dict[str, Any]) -> dict[str, Any]:
 
     previous = load_previous_rows()
     threshold = config["settings"]["failureThreshold"]
+    recovery_threshold = config["settings"]["recoveryThreshold"]
     rows: list[dict[str, Any]] = []
     now = int(time.time() * 1000)
     for service in services:
@@ -815,9 +818,27 @@ def run_checks(config: dict[str, Any]) -> dict[str, Any]:
             continue
         row = checked[service["id"]]
         old = previous.get(service["id"], {})
-        failures = 0 if row["rawStatus"] == "up" else int(old.get("consecutiveFailures", 0)) + 1
+        up = row["rawStatus"] == "up"
+        successes = int(old.get("consecutiveSuccesses", 0)) + 1 if up else 0
+        # A service that is down stays down until it has answered
+        # recoveryThreshold checks in a row. A restart loop briefly looks
+        # healthy on every retry; without this it flaps up and down all through
+        # an outage and announces every swing. A held service keeps its failure
+        # count too, so the next failed check goes straight back to down rather
+        # than climbing out of degraded again.
+        holding = up and str(old.get("status", "")) == "down" and successes < recovery_threshold
+        if up and not holding:
+            failures = 0
+        elif up:
+            failures = int(old.get("consecutiveFailures", 0))
+        else:
+            failures = int(old.get("consecutiveFailures", 0)) + 1
         row["consecutiveFailures"] = failures
-        row["status"] = "up" if row["rawStatus"] == "up" else ("down" if failures >= threshold else "degraded")
+        row["consecutiveSuccesses"] = successes
+        if up:
+            row["status"] = "down" if holding else "up"
+        else:
+            row["status"] = "down" if failures >= threshold else "degraded"
         row.pop("rawStatus", None)
         rows.append(row)
     payload = {

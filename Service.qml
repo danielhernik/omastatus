@@ -21,6 +21,7 @@ Item {
       intervalSeconds: 30,
       timeoutSeconds: 4,
       failureThreshold: 1,
+      recoveryThreshold: 1,
       notifications: true,
       viewMode: "grouped"
     },
@@ -83,7 +84,8 @@ Item {
       }
       var signature = JSON.stringify({
         services: probes,
-        failureThreshold: parsed.settings.failureThreshold
+        failureThreshold: parsed.settings.failureThreshold,
+        recoveryThreshold: parsed.settings.recoveryThreshold
       })
       var probesChanged = signature !== root.probeSignature
       root.probeSignature = signature
