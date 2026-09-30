@@ -28,12 +28,16 @@ Panel {
   readonly property var summary: monitorService ? monitorService.summary : ({})
   readonly property string viewMode: String(settings.viewMode || "grouped")
   readonly property bool checking: monitorService ? monitorService.checking : false
-  readonly property color foreground: bar ? bar.barForeground : Color.foreground
+  // Popup text follows the theme's popup role, not the bar's contrast-derived
+  // foreground: with a transparent bar that resolves against the wallpaper
+  // behind it and lands near the popup card colour (~1.3:1 contrast).
+  readonly property color foreground: Color.popups.text
   // Service failures must remain red even when the active theme remaps the
   // shell's generic urgent colour to a different accent.
   readonly property color urgent: "#ef5f6b"
   readonly property color healthy: "#59d98e"
-  readonly property color dim: Qt.darker(root.foreground, 1.45)
+  // 1.45 drove captions to ~3.5:1 on the measured popup card.
+  readonly property color dim: Qt.darker(root.foreground, 1.15)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property string pluginDirectory: Qt.resolvedUrl(".").toString()
     .replace(/^file:\/\//, "").replace(/\/$/, "")
@@ -653,7 +657,7 @@ Panel {
                             width: parent.width
                             text: String(detailedRow.modelData.target || "")
                             textFormat: Text.PlainText
-                            color: Qt.darker(root.dim, 1.15)
+                            color: root.dim
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
                             elide: Text.ElideMiddle
